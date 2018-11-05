@@ -24,12 +24,39 @@ with open('settings.json') as f:
 telegram_token = settings['telegram_token']
 allowed_id = settings['allowed_id']
 
+tags_file_name = 'tags.pickle'
+followers_file_name = 'followers.pickle'
+
+def load(file_name):
+    return pickle.load(open(file_name, 'rb'))
+
+def save(variable_name, file_name):
+    pickle.dump(variable_name, open(file_name, 'wb'))
+
+def save_tags(tags): 
+    save(tags, tags_file_name)
+
 # Load users
 try:
-    users = pickle.load(open('users.pickle', 'rb'))
+    users = load('users.pickle')
 except (FileNotFoundError, IOError):
     users = []
-    pickle.dump(users, open('users.pickle', 'wb'))
+    save(users, 'users.pickle')
+
+# Load tags
+try:
+    tags = load('tags.pickle')
+except (FileNotFoundError, IOError):
+    tags = {}
+    save_tags(tags)
+
+# Load followers
+
+try:
+    followers = load(followers_file_name)
+except (FileNotFoundError, IOError):
+    followers = {}
+    save(followers, followers_file_name)
 
 # Create array with all threads
 threads = {}
@@ -37,11 +64,22 @@ threads = {}
 def help(bot, update):
     update.message.reply_text('Hi! Use /set to start the bot')
 
+def get_user(username):
+    try:
+        usernames = [a['username'].lower() for a in users]
+        if not username.lower() in usernames:
+            return None
+        for user in users:
+            if user['username'].lower() == username.lower():
+                return user
+    except:
+        return None
+
 def now(bot, update, args):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         try:
-            usernames = [ a['username'].lower() for a in users ]
-            if not args[1].lower() in usernames:
+            user = get_user(args[1])
+            if user is None:
                 update.message.reply_text("Sorry, username <b>{}</b> is not saved.".format(args[1]), parse_mode='HTML')
                 return
 
@@ -50,9 +88,6 @@ def now(bot, update, args):
                 return
 
             job_name = "{}_temp_{}".format(args[0], time.time())
-            for user in users:
-                if user['username'].lower() == args[1].lower():
-                    break
             temp_thread = Thread(
                 job_name,
                 args[0],
@@ -87,8 +122,68 @@ def create_thread(bot, context):
         context['user']['proxy']
     )
 
+def create_list(list_name, list, bot, update, args, message_list = 'List'):
+    if is_user_allowed(update):
+
+        if len(args) < 2:
+            update.message.reply_text("Check format <name> <list>", parse_mode='HTML')
+        else:
+            list_key = args.pop(0)
+            list[list_key] = " ".join(args)
+
+            save(list, list_name)
+
+            message = '{} {} saved'.format(message_list ,list_key)
+            send_reply(message, update)
+    else:
+        message = 'You have not the permission to use this bot.\nFor more details visit [Telegram-InstaPy-Scheduling](https://github.com/Tkd-Alex/Telegram-InstaPy-Scheduling)'
+        send_reply(message, update)
+
+def print_list(list, bot, update, args, message_list = 'values'):
+    if is_user_allowed(update):
+        if len(args) > 0:
+            print_list_keys(list, args[0], update)
+        else:
+            message = "You have <b>{}</b> {} configured.".format(len(list.keys()), message_list)
+            index = 1
+            for key in list.keys():
+                message += "\n{}) <b>{}</b>".format(index, key)
+                index += 1
+            update.message.reply_text(message, parse_mode='HTML')
+
+def get_values(list, key):
+    return list[key]
+
+def print_list_keys(list, key, update):
+    values = get_values(list, key)
+
+    try:
+        if values:
+            send_reply(values, update)
+    except:
+        print("Unable to get values for {}".format(key))
+
+def send_reply(message, update):
+    if len(message) > 0:
+        update.message.reply_text(message, parse_mode='Markdown')
+
+def create_tag(bot, update, args):
+    create_list(tags_file_name, tags, bot, update, args, 'Tags')
+
+def list_tags(bot, update, args):
+    print_list(tags, bot, update, args, 'tags')
+
+def create_followers_list(bot, update, args):
+    create_list(followers_file_name, followers, bot, update, args, 'Followers')
+
+def followers_list(bot, update, args):
+    print_list(followers, bot, update, args, 'followers')
+
+def is_user_allowed(update):
+    return str(update.message.chat_id) in allowed_id
+
 def status_thread(bot, update, args):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         if len(args) != 0:
             message = ""
             for arg in args:
@@ -113,7 +208,7 @@ def status_thread(bot, update, args):
         update.message.reply_text(message, parse_mode='Markdown')
 
 def set(bot, update, args, job_queue, chat_data):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         try:
             usernames = [ a['username'].lower() for a in users ]
             if not args[0].lower() in usernames:
@@ -215,7 +310,7 @@ def day_choose(bot, update, job_queue, chat_data):
                             reply_markup = InlineKeyboardMarkup(keyboard))
 
 def unset(bot, update, args, chat_data):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         try:
             name_job = args[0]
             if name_job in chat_data and name_job in threads:
@@ -253,7 +348,7 @@ def list_scripts(bot, update):
     update.message.reply_text(message, parse_mode='HTML')
 
 def add_user(bot, update, args):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         try:
             usernames = [ a['username'].lower() for a in users ]
             if args[0].lower() in usernames:
@@ -273,7 +368,7 @@ def add_user(bot, update, args):
         update.message.reply_text(message, parse_mode='Markdown')
 
 def delete_user(bot, update, args):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         try:
             usernames = [ a['username'].lower() for a in users ]
             if not args[0].lower() in usernames:
@@ -292,7 +387,7 @@ def delete_user(bot, update, args):
         update.message.reply_text(message, parse_mode='Markdown')
 
 def print_users(bot, update):
-    if str(update.message.chat_id) in allowed_id:
+    if is_user_allowed(update):
         usernames = [ a['username'].lower() for a in users ]
         message = "You have <b>{}</b> accounts configured.".format(len(usernames))
         index = 1
@@ -325,6 +420,12 @@ if __name__ == '__main__':
     dp.add_handler(CommandHandler("users", print_users))
 
     dp.add_handler(CommandHandler("scripts", list_scripts))
+
+    dp.add_handler(CommandHandler("set_tags", create_tag, pass_args=True))
+    dp.add_handler(CommandHandler("tags", list_tags, pass_args=True))
+
+    dp.add_handler(CommandHandler("set_followers", create_followers_list, pass_args=True))
+    dp.add_handler(CommandHandler("followers", followers_list, pass_args=True))
 
     dp.add_handler(CallbackQueryHandler(day_choose, pass_job_queue=True, pass_chat_data=True))
 

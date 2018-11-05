@@ -4,7 +4,7 @@
 import random, time, traceback, instapy
 
 # Create your script here:
-def awesome(username, password, proxy):
+def awesome(username, password, proxy, tags_to_like = None, followers_to_follow = None):
     try:
         session = instapy.InstaPy(username=username, password=password)
         session.login()
